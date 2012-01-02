@@ -33,15 +33,17 @@ describe "Rake::Pipeline::Runner" do
     (Digest::SHA1.new << File.read(assetfile_path)).to_s
   end
 
+  let(:unmatched_file) { input_file("junk.txt") }
+
   let(:input_files) do
-    %w(jquery.js ember.js).map { |f| input_file(f) }
+    [input_file("jquery.js"), input_file("ember.js"), unmatched_file]
   end
 
   let(:output_files) do
     [output_file("javascripts/application.js")]
   end
 
-  let(:runner) { Rake::Pipeline::Runner.new(assetfile_path) }
+  let(:runner) { Rake::Pipeline::Runner.from_assetfile(assetfile_path) }
 
   before do
     File.open(assetfile_path, 'w') { |file| file.write(ASSETFILE_SOURCE) }
@@ -162,6 +164,13 @@ describe "Rake::Pipeline::Runner" do
       output_files.each { |f| f.should exist }
       runner.invoke(:clean, [])
       output_files.each { |f| f.should_not exist }
+    end
+
+    it "leaves the pipeline's unmatched input files alone" do
+      runner.invoke(:build, [])
+      output_files.each { |f| f.should exist }
+      runner.invoke(:clean, [])
+      unmatched_file.should exist
     end
 
     context "if the :pretend option is set" do
