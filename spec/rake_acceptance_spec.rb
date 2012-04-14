@@ -1,6 +1,6 @@
 require "rake-pipeline/filters"
 
-describe "A realistic pipeline" do
+describe "A realistic project" do
 
 INPUTS = {
 
@@ -85,7 +85,7 @@ HERE
     copy_files
   end
 
-  describe "the basics" do
+  describe "a pipeline" do
     it "can successfully apply filters" do
       concat = concat_filter.new
       concat.input_files = INPUTS.keys.select { |key| key =~ /javascript/ }.map { |file| input_wrapper(file) }
@@ -155,22 +155,22 @@ HERE
   end
 
   describe "using the pipeline DSL" do
-    attr_reader :pipeline
+    attr_reader :project
 
     shared_examples_for "the pipeline DSL" do
       it "can be configured using the pipeline DSL" do
-        pipeline.invoke
+        project.invoke
         output_should_exist
       end
 
       it "can be configured using the pipeline DSL with an alternate Rake application" do
-        pipeline.rake_application = Rake::Application.new
-        pipeline.invoke
+        project.pipelines.first.rake_application = Rake::Application.new
+        project.invoke
         output_should_exist
       end
 
       it "can be invoked repeatedly to reflected updated changes" do
-        pipeline.invoke
+        project.invoke
         age_existing_files
 
         if respond_to?(:update_jquery)
@@ -189,13 +189,13 @@ HERE
           SC.hi = function() { console.log("hi"); };
         HERE
 
-        pipeline.invoke
+        project.invoke
 
         output_should_exist(expected)
       end
 
       it "can be restarted to reflect new files" do
-        pipeline.invoke
+        project.invoke
         age_existing_files
 
         if respond_to?(:update_history)
@@ -206,7 +206,7 @@ HERE
           end
         end
 
-        pipeline.invoke_clean
+        project.invoke_clean
 
         expected = <<-HERE.gsub(/^ {10}/, '')
           var History = {};
@@ -224,12 +224,31 @@ HERE
       it_behaves_like "the pipeline DSL"
 
       before do
-        @pipeline = Rake::Pipeline.build do
+        @project = Rake::Pipeline::Project.build do
           tmpdir "temporary"
-          input tmp, "app/javascripts/*.js"
-          filter(concat_filter) { "javascripts/application.js" }
-          filter(strip_asserts_filter) { |input| input }
           output "public"
+
+          input tmp, "app/javascripts/*.js" do
+            concat "javascripts/application.js"
+            filter(strip_asserts_filter) { |input| input }
+          end
+        end
+      end
+    end
+
+    describe "the raw pipeline DSL (with before_filter)" do
+      it_behaves_like "the pipeline DSL"
+
+      before do
+        @project = Rake::Pipeline::Project.build do
+          tmpdir "temporary"
+          output "public"
+
+          before_filter Rake::Pipeline::ConcatFilter, "javascripts/application.js"
+
+          input tmp, "app/javascripts/*.js" do
+            filter strip_asserts_filter
+          end
         end
       end
     end
@@ -238,12 +257,14 @@ HERE
       it_behaves_like "the pipeline DSL"
 
       before do
-        @pipeline = Rake::Pipeline.build do
+        @project = Rake::Pipeline::Project.build do
           tmpdir "temporary"
-          input tmp, "app/javascripts/*.js"
-          filter concat_filter, "javascripts/application.js"
-          filter strip_asserts_filter
           output "public"
+
+          input tmp, "app/javascripts/*.js" do
+            concat "javascripts/application.js"
+            filter strip_asserts_filter
+          end
         end
       end
     end
@@ -268,28 +289,121 @@ HERE
       it_behaves_like "the pipeline DSL"
 
       before do
-        @pipeline = Rake::Pipeline.build do
+        @project = Rake::Pipeline::Project.build do
           tmpdir "temporary"
-          input File.join(tmp, "app")
           output "public"
 
-          match "**/*.js" do
-            filter strip_asserts_filter
-            filter concat_filter, "javascripts/application.js"
-          end
+          input File.join(tmp, "app") do
+            match "**/*.js" do
+              filter strip_asserts_filter
+              concat "javascripts/application.js"
+            end
 
-          match "**/*.css" do
-            filter concat_filter, "stylesheets/application.css"
-          end
+            match "**/*.css" do
+              concat "stylesheets/application.css"
+            end
 
-          match "**/*.html" do
-            filter concat_filter
+            match "**/*.html" do
+              concat
+            end
           end
         end
       end
     end
 
-    describe "using the matcher spec (with multiple inputs)" do
+    describe "using multiple pipelines (with after_filters)" do
+      def output_should_exist(expected=EXPECTED_JS_OUTPUT)
+        super
+
+        css = File.join(tmp, "public/stylesheets/application.css")
+
+        File.exists?(css).should be_true
+        File.read(css).should == EXPECTED_CSS_OUTPUT
+
+        html = File.join(tmp, "public/index.html")
+        File.exists?(html).should be_true
+        File.read(html).should == EXPECTED_HTML_OUTPUT
+
+        junk = File.join(tmp, "public/junk.txt")
+        File.exists?(junk).should be_false
+      end
+
+      it_behaves_like "the pipeline DSL"
+
+      before do
+        @project = Rake::Pipeline::Project.build do
+          tmpdir "temporary"
+          output "public"
+
+          app_dir = File.join(tmp, "app")
+
+          after_filter Rake::Pipeline::ConcatFilter do |input|
+            ext = File.extname(input)
+
+            case ext
+            when ".js"
+              "javascripts/application.js"
+            when ".css"
+              "stylesheets/application.css"
+            when ".html"
+              input
+            end
+          end
+
+          input app_dir, "**/*.js" do
+            filter strip_asserts_filter
+          end
+
+          input app_dir, "**/*.css"
+
+          input app_dir, "**/*.html"
+        end
+      end
+    end
+
+    describe "using multiple pipelines" do
+      def output_should_exist(expected=EXPECTED_JS_OUTPUT)
+        super
+
+        css = File.join(tmp, "public/stylesheets/application.css")
+
+        File.exists?(css).should be_true
+        File.read(css).should == EXPECTED_CSS_OUTPUT
+
+        html = File.join(tmp, "public/index.html")
+        File.exists?(html).should be_true
+        File.read(html).should == EXPECTED_HTML_OUTPUT
+
+        junk = File.join(tmp, "public/junk.txt")
+        File.exists?(junk).should be_false
+      end
+
+      it_behaves_like "the pipeline DSL"
+
+      before do
+        @project = Rake::Pipeline::Project.build do
+          tmpdir "temporary"
+          output "public"
+
+          app_dir = File.join(tmp, "app")
+
+          input app_dir, "**/*.js" do
+            filter strip_asserts_filter
+            concat "javascripts/application.js"
+          end
+
+          input app_dir, "**/*.css" do
+            concat "stylesheets/application.css"
+          end
+
+          input app_dir, "**/*.html" do
+            concat
+          end
+        end
+      end
+    end
+
+    describe "using the matcher spec (with multiple inputs to a single pipeline)" do
       it_behaves_like "the pipeline DSL"
 
       def tmp1
@@ -341,24 +455,23 @@ HERE
         tmp1 = self.tmp1
         tmp2 = self.tmp2
 
-        @pipeline = Rake::Pipeline.build do
+        @project = Rake::Pipeline::Project.build do
           tmpdir "temporary"
-          input File.join(tmp1, "app")
-          input File.join(tmp2, "app")
-
           output "public"
 
-          match "**/*.js" do
-            filter strip_asserts_filter
-            filter concat_filter, "javascripts/application.js"
-          end
+          inputs [File.join(tmp1, "app"), File.join(tmp2, "app")] do
+            match "**/*.js" do
+              filter strip_asserts_filter
+              concat "javascripts/application.js"
+            end
 
-          match "**/*.css" do
-            filter concat_filter, "stylesheets/application.css"
-          end
+            match "**/*.css" do
+              concat "stylesheets/application.css"
+            end
 
-          match "**/*.html" do
-            filter concat_filter
+            match "**/*.html" do
+              concat
+            end
           end
         end
       end

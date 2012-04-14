@@ -79,6 +79,7 @@ module Rake
       def initialize(&block)
         block ||= proc { |input| input }
         @output_name_generator = block
+        @input_files = []
       end
 
       # Invoke this method in a subclass of Filter to declare that
@@ -154,8 +155,6 @@ module Rake
         hash = {}
 
         input_files.each do |file|
-          outputs = output_paths(file)
-
           output_wrappers(file).each do |output|
             hash[output] ||= []
             hash[output] << file
@@ -181,13 +180,21 @@ module Rake
         @rake_application || Rake.application
       end
 
+      # @param [FileWrapper] file wrapper to get paths for
+      # @return [Array<String>] array of file paths within additional dependencies
+      def additional_dependencies(input)
+        []
+      end
+
       # Generate the Rake tasks for the output files of this filter.
       #
       # @see #outputs #outputs (for information on how the output files are determined)
       # @return [void]
       def generate_rake_tasks
         @rake_tasks = outputs.map do |output, inputs|
-          dependencies = inputs.map(&:fullpath)
+          dependencies = inputs.map do |input|
+            [input.fullpath] + additional_dependencies(input)
+          end.flatten.uniq
 
           dependencies.each { |path| create_file_task(path) }
 

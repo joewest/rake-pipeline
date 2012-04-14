@@ -1,8 +1,8 @@
-describe "Rake::Pipeline::DSL" do
+describe "Rake::Pipeline::PipelineDSL" do
   ConcatFilter = Rake::Pipeline::SpecHelpers::Filters::ConcatFilter
 
   let(:pipeline) { Rake::Pipeline.new }
-  let(:dsl) { Rake::Pipeline::DSL.new(pipeline) }
+  let(:dsl) { Rake::Pipeline::DSL::PipelineDSL.new(pipeline) }
 
   def filter
     pipeline.filters.last
@@ -77,13 +77,6 @@ describe "Rake::Pipeline::DSL" do
     end
   end
 
-  describe "#tmpdir" do
-    it "configures the pipeline's tmpdir" do
-      dsl.tmpdir "/temporary"
-      pipeline.tmpdir.should == "/temporary"
-    end
-  end
-
   describe "#concat" do
     it "creates a ConcatFilter" do
       dsl.concat "octopus"
@@ -95,6 +88,13 @@ describe "Rake::Pipeline::DSL" do
         dsl.concat ["octopus"]
         filter.should be_kind_of(Rake::Pipeline::OrderingConcatFilter)
       end
+    end
+  end
+
+  describe "#copy" do
+    it "creates a ConcatFilter" do
+      dsl.copy
+      filter.should be_kind_of(Rake::Pipeline::ConcatFilter)
     end
   end
 end

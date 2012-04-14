@@ -14,14 +14,14 @@ module Rake
     #     ...
     #   }
     class Middleware
-      attr_accessor :runner
+      attr_accessor :project
 
       # @param [#call] app a Rack application
       # @param [String|Rake::Pipeline] pipeline either a path to an
       #   Assetfile to use to build a pipeline, or an existing pipeline.
       def initialize(app, pipeline)
         @app = app
-        @runner = Rake::Pipeline::Runner.from_assetfile(pipeline)
+        @project = Rake::Pipeline::Project.new(pipeline)
       end
 
       # Automatically compiles your assets if required and
@@ -30,8 +30,12 @@ module Rake
       # @param [Hash] env a Rack environment
       # @return [Array(Fixnum, Hash, #each)] A rack response
       def call(env)
-        runner.invoke_clean
+        project.invoke_clean
         path = env["PATH_INFO"]
+
+        if project.maps.has_key?(path)
+          return project.maps[path].call(env)
+        end
 
         if filename = file_for(path)
           if File.directory?(filename)
@@ -53,7 +57,11 @@ module Rake
       end
 
       def file_for(path)
-        Dir[File.join(runner.pipeline.output_root, path)].first
+        project.pipelines.each do |pipeline|
+          file = Dir[File.join(pipeline.output_root, path)].first
+          return file unless file.nil?
+        end
+        nil
       end
 
       def headers_for(path)
